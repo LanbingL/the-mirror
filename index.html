@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyberpunk Vision Analyst</title>
+    
+    <!-- 1. Load OpenCV.js -->
+    <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+    
+    <!-- 2. Load MediaPipe Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <!-- 3. Load Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
+
+    <style>
+        :root {
+            --neon-blue: #0ff;
+            --neon-red: #f00;
+            --neon-green: #0f0;
+            --neon-purple: #b0f;
+            --bg-color: #050505;
+            --font-main: 'Courier New', monospace;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--neon-green);
+            font-family: var(--font-main);
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        /* --- Top: Scrolling Banner --- */
+        #top-banner {
+            height: 50px;
+            flex-shrink: 0;
+            border-bottom: 2px solid var(--neon-blue);
+            overflow: hidden;
+            white-space: nowrap;
+            position: relative;
+            background: #000;
+            display: flex;
+            align-items: center;
+            z-index: 20;
+        }
+
+        .ticker-wrap { 
+            width: 100%; 
+            overflow: hidden; 
+            position: relative;
+        }
+        
+        .ticker {
+            display: inline-block;
+            white-space: nowrap;
+            animation: ticker 30s linear infinite;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            color: var(--neon-green);
+            text-shadow: 2px 0 var(--neon-red), -2px 0 var(--neon-blue);
+            padding-left: 20px;
+            padding-right: 100%;
+        }
+
+        @keyframes ticker {
+            0% { transform: translate3d(0, 0, 0); }
+            100% { transform: translate3d(-100%, 0, 0); }
+        }
+
+        /* --- Middle: Data Split Section --- */
+        #middle-section {
+            flex: 1; 
+            display: flex;
+            flex-direction: row;
+            border-bottom: 2px solid var(--neon-blue);
+            overflow: hidden;
+            position: relative; 
+        }
+
+        /* 1. Left: Metrics Console */
+        #metrics-console {
+            flex: 1; 
+            padding: 15px;
+            background: #080808;
+            font-size: 0.8rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            z-index: 10;
+            border-right: 1px solid #111;
+        }
+
+        #metrics-console h3 {
+            margin-top: 0;
+            color: var(--neon-blue);
+            border-bottom: 1px dashed #333;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }
+
+        .console-line {
+            margin-bottom: 10px;
+            font-family: 'Courier New', monospace;
+            border-left: 2px solid #333;
+            padding-left: 8px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        .metric-label { color: #888; margin-right: 5px; font-size: 0.7rem;}
+        .metric-value { color: #fff; font-weight: bold; text-shadow: 0 0 5px var(--neon-green); }
+
+        /* 2. Center: 3D Particle System */
+        #center-spacer {
+            flex: 3; 
+            position: relative;
+            background: #000;
+            overflow: hidden;
+            border-left: 1px solid #222;
+            border-right: 1px solid #222;
+        }
+
+        #three-container {
+            width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1;
+        }
+
+        #fs-btn {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.5); border: 1px solid var(--neon-blue);
+            color: var(--neon-blue); padding: 5px 15px; font-family: inherit;
+            font-size: 0.7rem; cursor: pointer; z-index: 20; transition: all 0.3s;
+        }
+        #fs-btn:hover { background: var(--neon-blue); color: #000; }
+
+        /* 3. Right: Semantics */
+        #semantics-panel {
+            flex: 1; 
+            padding: 15px;
+            background: #0a0a0a;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            z-index: 10;
+            font-size: 0.8rem;
+        }
+
+        #semantics-content h4 { margin: 20px 0 10px 0; color: var(--neon-blue); border-bottom: 1px dashed #333; padding-bottom: 5px; font-size: 0.9rem;}
+        #semantics-content h4:first-child { margin-top: 0; }
+        
+        #raw-scene-text {
+            line-height: 1.4; color: #ccc; font-size: 0.85rem; white-space: pre-wrap; min-height: 80px; margin-bottom: 20px;
+        }
+
+        #receipt-text {
+            font-family: 'Courier New', monospace; color: var(--neon-green); background: rgba(0, 20, 0, 0.3);
+            padding: 8px; border: 1px dashed #333; white-space: pre; font-size: 0.75rem;
+            line-height: 1.3; min-height: 100px; text-shadow: 0 0 2px var(--neon-green); margin-bottom: 20px;
+        }
+
+        .typing-cursor::after {
+            content: '█'; animation: blink 1s infinite; color: var(--neon-green); margin-left: 5px;
+        }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+        /* --- CENTER OVERLAY: TAGS --- */
+        #center-tag-overlay {
+            position: absolute; top: 15%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 15; text-align: center; pointer-events: none; width: 100%;
+        }
+
+        #current-tag {
+            font-size: 2.5rem; font-weight: bold; color: #fff; text-transform: uppercase;
+            text-shadow: 0 0 10px var(--neon-purple), 0 0 20px var(--neon-blue);
+            padding: 10px 20px; display: inline-block; opacity: 0;
+            transition: opacity 0.5s ease-in-out; letter-spacing: 4px;
+        }
+
+        #phrase-display {
+            color: #fff;
+            font-size: 1.5rem;
+            font-weight: 300;
+            letter-spacing: 4px;
+            text-align: center;
+            text-shadow: 0 0 15px rgba(255, 0, 150, 0.5);
+            opacity: 0;
+            transform: scale(0.9);
+            transition: all 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            max-width: 80%;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 20px 40px;
+            border-radius: 2px;
+            border-top: 1px solid rgba(255,255,255,0.2);
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 15;
+            pointer-events: none;
+        }
+
+        /* --- Bottom: Video Grid --- */
+        #vision-grid {
+            height: 15vw; flex-shrink: 0; display: grid; grid-template-columns: repeat(5, 1fr); 
+            gap: 0; background: #000; border-top: 2px solid #333; z-index: 20;
+        }
+
+        .panel { position: relative; background: #000; border-right: 1px solid #333; overflow: hidden; }
+        .panel:last-child { border-right: none; }
+        .panel canvas, .panel video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+
+        .panel-overlay {
+            position: absolute; top: 5px; left: 5px; font-size: 0.6rem;
+            background: rgba(0,0,0,0.8); color: #fff; padding: 2px 4px;
+            border: 1px solid #555; pointer-events: none; z-index: 10;
+        }
+
+        #panel-raw .panel-overlay { border-color: var(--neon-blue); color: var(--neon-blue); }
+        #panel-flow .panel-overlay { border-color: var(--neon-red); color: var(--neon-red); }
+        #panel-blob .panel-overlay { border-color: var(--neon-green); color: var(--neon-green); }
+        #panel-edge .panel-overlay { border-color: #fff; color: #fff; }
+        #panel-bio .panel-overlay { border-color: var(--neon-purple); color: var(--neon-purple); }
+
+        button { padding: 15px 30px; background: var(--neon-green); color: #000; border: none; cursor: pointer; font-weight: bold; font-family: inherit; font-size: 1rem; }
+        button:hover { background: #fff; }
+        button:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+    </style>
+</head>
+<body>
+
+    <!-- Top Banner -->
+    <div id="top-banner">
+        <div class="ticker-wrap">
+            <div id="ai-ticker" class="ticker">
+                // SYSTEM AWAITING VISUAL INPUT // INITIALIZING NEURAL LINK...
+            </div>
+        </div>
+    </div>
+
+    <!-- Middle Section: Data Split -->
+    <div id="middle-section">
+        
+        <!-- 1. LEFT: Metrics Console -->
+        <div id="metrics-console">
+            <h3>// LIVE METRICS</h3>
+            <div class="console-line"><span class="metric-label">ENERGY:</span><span class="metric-value" id="m-energy">0.00</span></div>
+            <div class="console-line"><span class="metric-label">VECTOR:</span><span class="metric-value" id="m-direction">--</span></div>
+            <div class="console-line"><span class="metric-label">ENTROPY:</span><span class="metric-value" id="m-entropy">0.00</span></div>
+            <div class="console-line"><span class="metric-label">ZONES:</span><span class="metric-value" id="m-regions">0</span></div>
+            <div class="console-line"><span class="metric-label">BLOBS:</span><span class="metric-value" id="b-count">0</span></div>
+            <div class="console-line"><span class="metric-label">MAX_SIZE:</span><span class="metric-value" id="b-area">0 px</span></div>
+            <div class="console-line"><span class="metric-label">COORD:</span><span class="metric-value" id="b-center">0, 0</span></div>
+            <div class="console-line" style="margin-top:20px; border-left:none;"><span class="metric-label">STATUS:</span><span class="metric-value" style="color:var(--neon-blue)">ONLINE</span></div>
+        </div>
+
+        <!-- 2. CENTER: 3D Particle System -->
+        <div id="center-spacer">
+            <div id="three-container"></div>
+            <!-- Center Tag Overlay -->
+            <div id="center-tag-overlay">
+                <div id="current-tag"></div>
+            </div>
+            <div id="phrase-display"></div>
+            <button id="fs-btn" onclick="toggleFullScreen()">[ ] EXPAND</button>
+        </div>
+
+        <!-- 3. RIGHT: Semantics -->
+        <div id="semantics-panel">
+            <div id="semantics-content">
+                <h4>// RAW ANALYSIS</h4>
+                <div id="raw-scene-text" class="typing-cursor">...awaiting visual data...</div>
+
+                <h4>// MANIFEST</h4>
+                <div id="receipt-text" class="typing-cursor">...scanning...</div>
+
+                <div class="confidence-bar-container" style="margin-top:20px;">
+                    <span class="confidence-label">CONFIDENCE</span>
+                    <div class="confidence-bar"><div class="confidence-fill" style="width: 10%"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom: Video Grid -->
+    <div id="vision-grid">
+        <div class="panel" id="panel-raw">
+            <video id="video-input" autoplay playsinline muted></video>
+            <div class="panel-overlay">RAW FEED</div>
+        </div>
+        <div class="panel" id="panel-flow">
+            <canvas id="canvas-flow"></canvas>
+            <div class="panel-overlay">OPTICAL FLOW</div>
+        </div>
+        <div class="panel" id="panel-blob">
+            <canvas id="canvas-blob"></canvas>
+            <div class="panel-overlay">BLOB TRACKER</div>
+        </div>
+        <div class="panel" id="panel-edge">
+            <canvas id="canvas-edge"></canvas>
+            <div class="panel-overlay">EDGE DETECT</div>
+        </div>
+        <div class="panel" id="panel-bio">
+            <canvas id="canvas-bio"></canvas>
+            <div class="panel-overlay">BIO-METRICS</div>
+        </div>
+    </div>
+
+<script>
+    let video = document.getElementById('video-input');
+    let isCvLoaded = false;
+    let streamStarted = false;
+
+    // Canvases
+    let canvasFlow = document.getElementById('canvas-flow');
+    let canvasBlob = document.getElementById('canvas-blob');
+    let canvasEdge = document.getElementById('canvas-edge');
+    let canvasBio  = document.getElementById('canvas-bio');
+    
+    let ctxFlow = canvasFlow.getContext('2d');
+    let ctxBlob = canvasBlob.getContext('2d');
+    let ctxEdge = canvasEdge.getContext('2d');
+    let ctxBio  = canvasBio.getContext('2d');
+
+    // OpenCV Variables
+    let cap, src, gray, prevGray, flow, frameDiff, mask, edges;
+    let contours, hierarchy;
+    
+    // MediaPipe Variables
+    let faceMesh, hands;
+    let bioResults = { faces: null, hands: null };
+
+    // Three.js Variables
+    let scene, camera, renderer, particles, particleGroup;
+    let targetScale = 1.0;
+    let currentScale = 1.0;
+
+    // Social Cosmos Data
+    const popularHashtags = [
+        "#Love", "#Art", "#Trend", "#Vibe", "#Mood", "#Life", "#Cool", "#Tech",
+        "#Code", "#Web3", "#NFT", "#AI", "#Dev", "#Data", "#Beta", "#Sync",
+        "#Flow", "#Zen", "#Glow", "#City", "#Neon", "#Cyber", "#Space", "#Mars",
+        "#Moon", "#Star", "#Hype", "#Drip", "#Pure", "#Soul", "#Mind", "#Idea",
+        "#algorithmdreams", "#digitalgaze", "#codedsolitude", "#mirrorechoes",
+        "#fragmentedself", "#datawhispers", "#electricloneliness",
+    ];
+
+    const phrases = [
+        "The gaze remembers longer than you think.", "Many selves.", "A mirror that studies its subject.", "Every gesture becomes content.",
+        "The self shifts with every glance.", "Identity cached, not lived.", "A self composed of echoes.",
+        "Connection without closeness.", "Versioned identity.", "The machine dreams you into being.", "The gaze never blinks.",
+        "Your echo bends inward.", "The self flickers open.", "The screen exhales your name.",
+        "Fragments assemble their own story.", "Self in flux.", "Time folds around your outline.",
+    ];
+
+    const config = {
+        particleCount: 1500,
+        ringRadiusInner: 14,
+        ringRadiusOuter: 24,
+        planetRadius: 9,
+        scatterStrength: 60,
+        baseCamZ: 50,
+        colors: {
+            planet: ['#ff9a9e', '#fecfef', '#feada6', '#f5efef'],
+            ring: ['#a18cd1', '#fbc2eb', '#8fd3f4', '#84fab0']
+        },
+        smoothing: {
+            zoom: 0.02,
+            tilt: 0.02,
+            spin: 0.05
+        },
+        deadZone: 0.15
+    };
+
+    const state = {
+        handOpen: false,
+        scatterValue: 0,
+        targetZoom: 50,
+        currentZoom: 50,
+        targetTiltZ: 0,
+        currentTiltZ: 0,
+        targetSpinSpeed: 0.1,
+        currentSpinSpeed: 0.1,
+        lastHandDetected: 0
+    };
+
+    // Config
+    const AI_INTERVAL = 30000; 
+    const WIDTH = 320; 
+    const HEIGHT = 240;
+
+    // State Variables
+    let tagQueue = [];
+    let typeWriterTimeout1 = null;
+    let typeWriterTimeout2 = null;
+    let nextTickerText = null; 
+    let firstUpdate = true;
+
+    // Messages
+    const MESSAGES = {
+        BOOT: ["INITIALIZING NEURAL KERNEL...", "ALLOCATING VRAM BLOCKS...", "MOUNTING OPTICAL DRIVERS...", "ESTABLISHING SECURE HANDSHAKE..."],
+        ERROR: ["CONNECTION_RESET_BY_PEER", "PACKET_LOSS_DETECTED", "NEURAL_NET_DESYNC_ERROR", "CRITICAL_FAILURE: RETRYING"]
+    };
+
+    // Initialize Check
+    window.onload = function() {
+        setTimeout(() => {
+            if(typeof FaceMesh !== 'undefined' && typeof Hands !== 'undefined' && typeof cv !== 'undefined' && typeof THREE !== 'undefined') {
+                startSystem();
+            } else {
+                alert("LIB LOAD FAILED (Check Internet)");
+            }
+        }, 2000);
+    };
+
+    function onOpenCvReady() {
+        console.log('OpenCV.js is ready');
+        isCvLoaded = true;
+    }
+
+    async function startSystem() {
+        try {
+            // 1. Setup AI Models
+            await setupMediaPipe();
+
+            await startCamera();
+
+            // 2. Start Subsystems
+            initThreeJS();
+            updateTickerForce(getRandomMessage('BOOT'));
+            startTagCycler();
+            setupTickerListener();
+
+            setInterval(captureAndAnalyze, AI_INTERVAL);
+        } catch (e) {
+            alert("System Start Error: " + e.message);
+            location.reload();
+        }
+    }
+
+    // --- RESTORED CAMERA FUNCTIONS ---
+
+    async function startCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: WIDTH, height: HEIGHT, facingMode: "user" }, audio: false });
+            video.srcObject = stream;
+            video.width = WIDTH;
+            video.height = HEIGHT;
+            video.play();
+            video.onloadedmetadata = () => {
+                streamStarted = true;
+                initOpenCV();
+                requestAnimationFrame(processVideo);
+            };
+        } catch (err) {
+            throw new Error("Camera Access Denied: " + err.message);
+        }
+    }
+
+    function initOpenCV() {
+        src = new cv.Mat(HEIGHT, WIDTH, cv.CV_8UC4);
+        gray = new cv.Mat(HEIGHT, WIDTH, cv.CV_8UC1);
+        prevGray = new cv.Mat(HEIGHT, WIDTH, cv.CV_8UC1);
+        flow = new cv.Mat(HEIGHT, WIDTH, cv.CV_32FC2);
+        frameDiff = new cv.Mat(HEIGHT, WIDTH, cv.CV_8UC1);
+        mask = new cv.Mat(HEIGHT, WIDTH, cv.CV_8UC1);
+        edges = new cv.Mat(HEIGHT, WIDTH, cv.CV_8UC1);
+        contours = new cv.MatVector();
+        hierarchy = new cv.Mat();
+        cap = new cv.VideoCapture(video);
+        cap.read(src);
+        cv.cvtColor(src, prevGray, cv.COLOR_RGBA2GRAY);
+    }
+
+    let frameCount = 0;
+
+    async function processVideo() {
+        if (!streamStarted || !isCvLoaded) {
+            requestAnimationFrame(processVideo);
+            return;
+        }
+        try {
+            let begin = Date.now();
+            cap.read(src);
+            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+            // Optical Flow
+            cv.calcOpticalFlowFarneback(prevGray, gray, flow, 0.5, 3, 15, 3, 5, 1.2, 0);
+            drawOpticalFlow(flow);
+
+            // Edge
+            cv.Canny(gray, edges, 50, 100, 3, false);
+            cv.imshow('canvas-edge', edges);
+
+            // Blob
+            cv.absdiff(gray, prevGray, frameDiff);
+            cv.threshold(frameDiff, mask, 40, 255, cv.THRESH_BINARY);
+            cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+            drawBlobsAndStats(mask, contours);
+
+            // MediaPipe updates (crucial for Three.js interaction)
+            frameCount++;
+            if (frameCount % 3 === 0) {
+                if(faceMesh) await faceMesh.send({image: video});
+                if(hands) await hands.send({image: video});
+            }
+            drawBioMetrics(); 
+
+            let mean = cv.mean(gray); 
+            let intensity = Math.floor(mean[0] / 15); 
+            document.body.style.backgroundColor = `rgb(${intensity}, ${intensity}, ${intensity})`;
+            gray.copyTo(prevGray);
+            
+            let delay = 1000/30 - (Date.now() - begin);
+            setTimeout(() => requestAnimationFrame(processVideo), delay);
+        } catch (err) { 
+            console.error("CV Loop Error", err); 
+            requestAnimationFrame(processVideo);
+        }
+    }
+
+    // --- SETUP MEDIAPIPE ---
+    async function setupMediaPipe() {
+        faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+        faceMesh.setOptions({maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
+        faceMesh.onResults((results) => { bioResults.faces = results; });
+
+        hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
+        hands.onResults((results) => { bioResults.hands = results; });
+    }
+
+    // --- TEXT TEXTURE CREATION ---
+    function createTextTexture(text, color) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 512;
+        canvas.height = 128;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.font = 'bold 50px Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 5;
+        ctx.fillStyle = color;
+        ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.needsUpdate = true;
+        return texture;
+    }
+
+    // --- THREE.JS ---
+    function initThreeJS() {
+        const container = document.getElementById('three-container');
+        scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x020202, 0.02);
+        camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.z = config.baseCamZ;
+        camera.position.y = 10;
+        camera.lookAt(0, 0, 0);
+        renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        // Create particle system
+        particles = [];
+        particleGroup = new THREE.Group();
+        scene.add(particleGroup);
+        const vec3 = new THREE.Vector3();
+
+        for (let i = 0; i < config.particleCount; i++) {
+            const tagText = popularHashtags[i % popularHashtags.length];
+            const isRing = Math.random() > 0.4;
+            let colorHex;
+            let tx, ty, tz;
+
+            if (!isRing) {
+                colorHex = config.colors.planet[Math.floor(Math.random() * config.colors.planet.length)];
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos((Math.random() * 2) - 1);
+                const r = config.planetRadius * Math.pow(Math.random(), 0.5);
+                tx = r * Math.sin(phi) * Math.cos(theta);
+                ty = r * Math.sin(phi) * Math.sin(theta);
+                tz = r * Math.cos(phi);
+            } else {
+                colorHex = config.colors.ring[Math.floor(Math.random() * config.colors.ring.length)];
+                const angle = Math.random() * Math.PI * 2;
+                const r = config.ringRadiusInner + Math.random() * (config.ringRadiusOuter - config.ringRadiusInner);
+                tx = Math.cos(angle) * r;
+                ty = (Math.random() - 0.5) * 0.8;
+                tz = Math.sin(angle) * r;
+                vec3.set(tx, ty, tz).applyAxisAngle(new THREE.Vector3(1, 0, 1).normalize(), Math.PI / 6);
+                tx = vec3.x; ty = vec3.y; tz = vec3.z;
+            }
+
+            const rx = (Math.random() - 0.5) * config.scatterStrength * 2;
+            const ry = (Math.random() - 0.5) * config.scatterStrength * 1.5;
+            const rz = (Math.random() - 0.5) * config.scatterStrength * 1.5;
+
+            const material = new THREE.SpriteMaterial({
+                map: createTextTexture(tagText, colorHex),
+                transparent: true,
+                opacity: 0.8,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+
+            const sprite = new THREE.Sprite(material);
+            const scaleBase = 0.6 + Math.random() * 0.6;
+            sprite.scale.set(scaleBase * 4, scaleBase, 1);
+
+            sprite.userData = {
+                targetPos: new THREE.Vector3(tx, ty, tz),
+                randomPos: new THREE.Vector3(rx, ry, rz),
+                originalScale: sprite.scale.clone(),
+                wobbleOffset: Math.random() * 100,
+                isPlanet: !isRing
+            };
+            sprite.position.copy(sprite.userData.targetPos);
+            particles.push(sprite);
+            particleGroup.add(sprite);
+        }
+
+        window.addEventListener('resize', () => {
+            if(container.clientWidth > 0 && container.clientHeight > 0) {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            }
+        });
+        animateThreeJS();
+    }
+
+    // Gesture interaction functions
+    function explodeUniverse() {
+        const phrase = phrases[Math.floor(Math.random() * phrases.length)];
+        const el = document.getElementById('phrase-display');
+        el.innerText = phrase;
+        el.style.opacity = 1;
+        el.style.transform = "translate(-50%, -50%) scale(1)";
+        gsap.to(state, { scatterValue: 1, duration: 1.5, ease: "power2.out" });
+    }
+
+    function implodeUniverse() {
+        const el = document.getElementById('phrase-display');
+        el.style.opacity = 0;
+        el.style.transform = "translate(-50%, -50%) scale(0.9)";
+        gsap.to(state, { scatterValue: 0, duration: 1.8, ease: "back.out(0.8)" });
+    }
+
+    const clock = new THREE.Clock();
+
+    function animateThreeJS() {
+        requestAnimationFrame(animateThreeJS);
+        if (!particleGroup) return;
+
+        const time = clock.getElapsedTime();
+
+        if (bioResults.hands && bioResults.hands.multiHandLandmarks && bioResults.hands.multiHandLandmarks.length > 0) {
+            state.lastHandDetected = Date.now();
+            const landmarks = bioResults.hands.multiHandLandmarks[0];
+            const wrist = landmarks[0];
+            const indexTip = landmarks[8];
+            const middleTip = landmarks[12];
+            const pinkyTip = landmarks[20];
+            const dist = (p1, p2) => Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+
+            // 1. Open/Close Detection
+            const dIndex = dist(indexTip, wrist);
+            const dPinky = dist(pinkyTip, wrist);
+            const avgDist = (dIndex + dPinky) / 2;
+
+            let targetOpen = state.handOpen;
+            if (avgDist > 0.40) targetOpen = true;
+            else if (avgDist < 0.20) targetOpen = false;
+
+            if (targetOpen !== state.handOpen) {
+                state.handOpen = targetOpen;
+                state.handOpen ? explodeUniverse() : implodeUniverse();
+            }
+
+            // 2. Zoom
+            const handSize = dist(wrist, middleTip);
+            const zoomFactor = THREE.MathUtils.clamp((handSize - 0.15) / 0.3, 0, 1);
+            state.targetZoom = THREE.MathUtils.lerp(50, 20, zoomFactor);
+
+            // 3. Rotation with Dead Zone
+            let diffX = wrist.x - 0.5;
+            if (Math.abs(diffX) < config.deadZone) {
+                diffX = 0;
+                state.targetSpinSpeed = 0.005;
+            } else {
+                const sign = Math.sign(diffX);
+                const magnitude = (Math.abs(diffX) - config.deadZone) * 2.0;
+                state.targetSpinSpeed = sign * magnitude;
+            }
+
+            // 4. Tilt
+            const dx = middleTip.x - wrist.x;
+            const dy = middleTip.y - wrist.y;
+            const angle = Math.atan2(dy, dx);
+            state.targetTiltZ = -(angle + Math.PI/2) * 0.5;
+
+        } else {
+            // Reset to idle if no hand
+            if (Date.now() - state.lastHandDetected > 1000) {
+                if (state.handOpen) { state.handOpen = false; implodeUniverse(); }
+                state.targetZoom = 50;
+                state.targetTiltZ = 0;
+                state.targetSpinSpeed = 0.01;
+            }
+        }
+
+        // Smooth transitions
+        state.currentZoom += (state.targetZoom - state.currentZoom) * config.smoothing.zoom;
+        camera.position.z = state.currentZoom;
+
+        state.currentSpinSpeed += (state.targetSpinSpeed - state.currentSpinSpeed) * config.smoothing.spin;
+        particleGroup.rotation.y += state.currentSpinSpeed * 0.1;
+
+        state.currentTiltZ += (state.targetTiltZ - state.currentTiltZ) * config.smoothing.tilt;
+        particleGroup.rotation.z = state.currentTiltZ;
+
+        // Particle animation
+        particles.forEach(sprite => {
+            const u = sprite.userData;
+            sprite.position.lerpVectors(u.targetPos, u.randomPos, state.scatterValue);
+
+            const floatAmp = 0.05 + state.scatterValue * 0.1;
+            sprite.position.y += Math.sin(time * 2 + u.wobbleOffset) * floatAmp;
+            sprite.position.x += Math.cos(time * 1.5 + u.wobbleOffset) * floatAmp * 0.5;
+
+            const targetScaleMult = 1 + state.scatterValue * 0.3;
+            sprite.scale.copy(u.originalScale).multiplyScalar(targetScaleMult);
+
+            const dist = sprite.position.distanceTo(camera.position);
+            sprite.material.opacity = (dist < 8) ? dist / 8 : 0.8;
+        });
+
+        renderer.render(scene, camera);
+    }
+
+    function toggleFullScreen() {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+        } else {
+            if (document.exitFullscreen) { document.exitFullscreen(); }
+        }
+    }
+
+    // --- TICKER ---
+    function setupTickerListener() {
+        const ticker = document.getElementById('ai-ticker');
+        ticker.addEventListener('animationiteration', () => {
+            if (nextTickerText) {
+                ticker.innerText = nextTickerText;
+                const newDuration = Math.max(30, nextTickerText.length * 0.4);
+                ticker.style.animationDuration = `${newDuration}s`;
+                nextTickerText = null; 
+            }
+        });
+    }
+
+    function queueTickerUpdate(text) {
+        const fullText = text + " // " + text;
+        if (firstUpdate) {
+            updateTickerForce(text); 
+            firstUpdate = false;
+        } else {
+            nextTickerText = fullText;
+        }
+    }
+
+    function updateTickerForce(text) {
+        const ticker = document.getElementById('ai-ticker');
+        const fullText = text + " // " + text;
+        ticker.style.animation = 'none';
+        void ticker.offsetWidth;
+        ticker.innerText = fullText;
+        const duration = Math.max(30, fullText.length * 0.4);
+        ticker.style.animationDuration = `${duration}s`;
+        ticker.style.animation = `ticker ${duration}s linear infinite`;
+    }
+
+    // --- TYPEWRITER ---
+    function typeWriter(text, elementId, speed, timeoutRefStr) {
+        if (typeof text !== 'string') text = String(text || "NO DATA");
+        const element = document.getElementById(elementId);
+        if(!element) return;
+        element.innerHTML = ""; 
+        element.classList.add('typing-cursor');
+        if(timeoutRefStr === '1') clearTimeout(typeWriterTimeout1);
+        if(timeoutRefStr === '2') clearTimeout(typeWriterTimeout2);
+        let i = 0;
+        function type() {
+            if (i < text.length) {
+                element.innerHTML += text.charAt(i);
+                i++;
+                const ref = setTimeout(type, speed);
+                if(timeoutRefStr === '1') typeWriterTimeout1 = ref;
+                if(timeoutRefStr === '2') typeWriterTimeout2 = ref;
+            } else { element.classList.remove('typing-cursor'); }
+        }
+        type();
+    }
+
+    function startTagCycler() {
+        const tagEl = document.getElementById('current-tag');
+        setInterval(() => {
+            if (tagQueue.length > 0) {
+                const tag = tagQueue.shift();
+                tagQueue.push(tag); 
+                tagEl.style.opacity = 0;
+                setTimeout(() => {
+                    tagEl.innerText = tag;
+                    tagEl.style.opacity = 1;
+                }, 500);
+            }
+        }, 3000);
+    }
+
+    function getRandomMessage(type) {
+        const list = MESSAGES[type];
+        return list[Math.floor(Math.random() * list.length)];
+    }
+
+    function glitchify(text) {
+        const chars = "!@#$%^&*()_+-=[]{}|;':,./<>?";
+        return text.split('').map(c => Math.random() > 0.85 ? chars[Math.floor(Math.random() * chars.length)] : c).join('');
+    }
+
+    async function captureAndAnalyze() {
+        if(!streamStarted) return;
+        const captureCanvas = document.createElement('canvas');
+        captureCanvas.width = video.videoWidth;
+        captureCanvas.height = video.videoHeight;
+        captureCanvas.getContext('2d').drawImage(video, 0, 0);
+        const base64Image = captureCanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+
+        try {
+            const response = await fetch("/api/analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ image: base64Image })
+            });
+
+            if (!response.ok) throw new Error(`API Error: ${response.status} ${response.statusText}`);
+            const data = await response.json();
+
+            if(data) {
+                updateUIWithAI(data);
+            }
+        } catch (error) {
+            console.error("AI Error:", error);
+            const msg = getRandomMessage("ERROR");
+            queueTickerUpdate(glitchify(msg));
+            document.getElementById('raw-scene-text').innerText = "CONNECTION FAILURE: " + error.message;
+        }
+    }
+
+    function formatReceipt(items) {
+        if(!items || !Array.isArray(items) || items.length === 0) return "NO INVENTORY DATA DETECTED.";
+        let str = "";
+        items.forEach(obj => {
+            let name = (obj.item || "UNKNOWN").toUpperCase().substring(0, 18).padEnd(20, '.');
+            let price = (obj.price || "---").padStart(8, ' ');
+            str += `${name}${price}\n`;
+        });
+        return str;
+    }
+
+    function updateUIWithAI(data) {
+        const innerVoice = data.inner_voice || "SYSTEM SILENT... DATA PACKET LOST.";
+        const rawScene = data.raw_scene || "VISUAL ANALYSIS INCOMPLETE.";
+        const tags = data.tags || ["ERROR", "VOID", "NULL"];
+        const receiptData = data.receipt || [];
+
+        queueTickerUpdate(innerVoice);
+        typeWriter(rawScene, 'raw-scene-text', 30, '1');
+        const receiptStr = formatReceipt(receiptData);
+        typeWriter(receiptStr, 'receipt-text', 10, '2');
+
+        if(Array.isArray(tags) && tags.length > 0) {
+            tagQueue = tags; 
+            const tagEl = document.getElementById('current-tag');
+            tagEl.innerText = tagQueue[0];
+            tagEl.style.opacity = 1;
+        }
+        document.querySelector('.confidence-fill').style.width = "92%";
+    }
+
+    // Drawing Functions
+    function drawOpticalFlow(flowMat) {
+        ctxFlow.fillStyle = 'rgba(0, 0, 0, 0.15)'; 
+        ctxFlow.fillRect(0, 0, WIDTH, HEIGHT);
+        const step = 10, visualScale = 0.5, threshold = 2.0, maxMag = 15.0;   
+        let flowData = flowMat.data32F;
+        let totalMotion = 0, dxSum = 0, dySum = 0;
+        ctxFlow.lineWidth = 1;
+        for (let y = 0; y < HEIGHT; y += step) {
+            for (let x = 0; x < WIDTH; x += step) {
+                const index = (y * WIDTH + x) * 2;
+                const fx = flowData[index], fy = flowData[index + 1];
+                const mag = Math.sqrt(fx*fx + fy*fy);
+                totalMotion += mag; dxSum += fx; dySum += fy;
+                if (mag > threshold) {
+                    let normalized = Math.min(mag, maxMag) / maxMag; 
+                    let hue = 240 - (normalized * 240); 
+                    ctxFlow.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+                    ctxFlow.fillStyle = `hsl(${hue}, 100%, 50%)`;
+                    let endX = x + (fx * visualScale), endY = y + (fy * visualScale);
+                    ctxFlow.beginPath(); ctxFlow.moveTo(x, y); ctxFlow.lineTo(endX, endY); ctxFlow.stroke();
+                    const angle = Math.atan2(fy, fx), headLen = 2;
+                    ctxFlow.beginPath(); ctxFlow.moveTo(endX, endY);
+                    ctxFlow.lineTo(endX - headLen * Math.cos(angle - Math.PI/6), endY - headLen * Math.sin(angle - Math.PI/6));
+                    ctxFlow.lineTo(endX - headLen * Math.cos(angle + Math.PI/6), endY - headLen * Math.sin(angle + Math.PI/6));
+                    ctxFlow.stroke();
+                }
+            }
+        }
+        document.getElementById('m-energy').innerText = totalMotion.toFixed(0);
+        let angle = Math.atan2(dySum, dxSum) * 180 / Math.PI;
+        let dirs = ["E", "SE", "S", "SW", "W", "NW", "N", "NE"];
+        document.getElementById('m-direction').innerText = (totalMotion > 500) ? dirs[Math.round(((angle + 360) % 360) / 45) % 8] : "--";
+        document.getElementById('m-entropy').innerText = (totalMotion / 2000).toFixed(2);
+    }
+
+    function drawBlobsAndStats(maskMat, contoursVec) {
+        ctxBlob.fillStyle = 'rgba(0, 0, 0, 0.1)'; 
+        ctxBlob.fillRect(0, 0, WIDTH, HEIGHT);
+        let maxArea = 0, centerX = 0, centerY = 0, blobs = contoursVec.size();
+        for (let i = 0; i < blobs; ++i) {
+            let cnt = contoursVec.get(i), area = cv.contourArea(cnt);
+            if(area > maxArea) {
+                maxArea = area;
+                let moments = cv.moments(cnt, false);
+                centerX = moments.m10 / moments.m00; centerY = moments.m01 / moments.m00;
+            }
+            if (area > 400) {
+                let rect = cv.boundingRect(cnt);
+                ctxBlob.strokeStyle = '#f00'; ctxBlob.lineWidth = 1;
+                ctxBlob.strokeRect(rect.x, rect.y, rect.width, rect.height);
+                let blobCx = rect.x + rect.width/2, blobCy = rect.y + rect.height/2;
+                ctxBlob.strokeStyle = 'rgba(255, 0, 0, 0.4)';
+                ctxBlob.beginPath(); ctxBlob.moveTo(WIDTH/2, HEIGHT/2); ctxBlob.lineTo(blobCx, blobCy); ctxBlob.stroke();
+                ctxBlob.save(); ctxBlob.scale(-1, 1);
+                ctxBlob.fillStyle = 'white'; ctxBlob.font = '10px monospace';
+                ctxBlob.fillText(`${(WIDTH - blobCx).toFixed(0)}, ${blobCy.toFixed(0)}`, -rect.x, rect.y - 4);
+                ctxBlob.restore();
+            }
+        }
+        document.getElementById('b-count').innerText = blobs;
+        document.getElementById('b-area').innerText = maxArea.toFixed(0);
+        document.getElementById('b-center').innerText = `${centerX.toFixed(0)},${centerY.toFixed(0)}`;
+        document.getElementById('m-regions').innerText = blobs;
+    }
+
+    function drawBioMetrics() {
+        canvasBio.width = WIDTH; canvasBio.height = HEIGHT;
+        ctxBio.save(); ctxBio.clearRect(0, 0, WIDTH, HEIGHT);
+        if (bioResults.hands && bioResults.hands.multiHandLandmarks) {
+            for (const landmarks of bioResults.hands.multiHandLandmarks) {
+                drawConnectors(ctxBio, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 1}); 
+                drawLandmarks(ctxBio, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2}); 
+            }
+        }
+        if (bioResults.faces && bioResults.faces.multiFaceLandmarks) {
+            for (const landmarks of bioResults.faces.multiFaceLandmarks) {
+                drawConnectors(ctxBio, landmarks, FACEMESH_TESSELATION, {color: '#C0C0C070', lineWidth: 0.5});
+                drawConnectors(ctxBio, landmarks, FACEMESH_RIGHT_EYE, {color: '#00FFFF'});
+                drawConnectors(ctxBio, landmarks, FACEMESH_LEFT_EYE, {color: '#00FFFF'});
+                drawConnectors(ctxBio, landmarks, FACEMESH_LIPS, {color: '#FF00FF'});
+            }
+        }
+        ctxBio.restore();
+    }
+</script>
+</body>
+</html>
